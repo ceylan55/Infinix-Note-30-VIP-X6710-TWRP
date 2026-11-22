@@ -18,17 +18,22 @@ jobs:
       - name: Maximize Build Space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
+          root-reserve-mb: 4096
+          temp-reserve-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
+          build-mount-path: '/mnt/twrp'
 
-      - name: Set Up Swap Space
-        uses: pierotofy/set-swap-space@master
-        with:
-          swap-size-gb: 16
+      - name: Set Up Safe Swap Space (4 GB)
+        run: |
+          df -h
+          sudo fallocate -l 4G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=4096
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
 
       - name: Install Build Dependencies
         run: |
@@ -37,16 +42,18 @@ jobs:
 
       - name: Sync Minimal Manifest TWRP-12.1
         run: |
-          mkdir -p ~/twrp
-          cd ~/twrp
-          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
-          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          sudo mkdir -p /mnt/twrp
+          sudo chown -R $USER:$USER /mnt/twrp
+          cd /mnt/twrp
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/repo && chmod +x ~/repo
+          ~/repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
+          ~/repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
       - name: Copy Device Tree & Build vendor_boot.img
         run: |
-          mkdir -p ~/twrp/device/infinix/X6710
-          cp -r device_tree/* ~/twrp/device/infinix/X6710/
-          cd ~/twrp
+          mkdir -p /mnt/twrp/device/infinix/X6710
+          cp -r device_tree/* /mnt/twrp/device/infinix/X6710/
+          cd /mnt/twrp
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
           lunch twrp_X6710-eng
@@ -56,4 +63,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: x6710twrp_fixed-vendor_boot
-          path: ~/twrp/out/target/product/X6710/vendor_boot.img
+          path: /mnt/twrp/out/target/product/X6710/vendor_boot.img
